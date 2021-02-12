@@ -768,6 +768,122 @@ func TestController_sync(t *testing.T) {
 			},
 		},
 		{
+			name: "create wildcard route - targetPort string, service port with name",
+			fields: fields{
+				i: &ingressLister{Items: []*networkingv1beta1.Ingress{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "1",
+							Namespace: "test",
+						},
+						Spec: networkingv1beta1.IngressSpec{
+							Rules: []networkingv1beta1.IngressRule{
+								{
+									Host: "*.test.com",
+									IngressRuleValue: networkingv1beta1.IngressRuleValue{
+										HTTP: &networkingv1beta1.HTTPIngressRuleValue{
+											Paths: []networkingv1beta1.HTTPIngressPath{
+												{
+													Path: "/", Backend: networkingv1beta1.IngressBackend{
+														ServiceName: "service-2",
+														ServicePort: intstr.FromInt(80),
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}},
+				r: &routeLister{},
+			},
+			args:        queueKey{namespace: "test", name: "1"},
+			wantExpects: []queueKey{{namespace: "test", name: "1"}},
+			wantRouteCreates: []*routev1.Route{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "<generated>",
+						Namespace:       "test",
+						OwnerReferences: []metav1.OwnerReference{{APIVersion: "networking.k8s.io/v1beta1", Kind: "Ingress", Name: "1", Controller: &boolTrue}},
+					},
+					Spec: routev1.RouteSpec{
+						Host: "wildcard.test.com",
+						Path: "/",
+						To: routev1.RouteTargetReference{
+							Name: "service-2",
+						},
+						Port: &routev1.RoutePort{
+							TargetPort: intstr.FromString("80-tcp"),
+						},
+						WildcardPolicy: "Subdomain",
+					},
+				},
+			},
+		},
+
+		{
+			name: "update wildcard route ",
+			fields: fields{
+				i: &ingressLister{Items: []*networkingv1beta1.Ingress{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "1",
+							Namespace: "test",
+						},
+						Spec: networkingv1beta1.IngressSpec{
+							Rules: []networkingv1beta1.IngressRule{
+								{
+									Host: "*.test.com",
+									IngressRuleValue: networkingv1beta1.IngressRuleValue{
+										HTTP: &networkingv1beta1.HTTPIngressRuleValue{
+											Paths: []networkingv1beta1.HTTPIngressPath{
+												{
+													Path: "/", Backend: networkingv1beta1.IngressBackend{
+														ServiceName: "service-1",
+														ServicePort: intstr.FromString("http"),
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}},
+				r: &routeLister{Items: []*routev1.Route{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:            "1-abcdef",
+							Namespace:       "test",
+							OwnerReferences: []metav1.OwnerReference{{APIVersion: "networking.k8s.io/v1beta1", Kind: "Ingress", Name: "1", Controller: &boolTrue}},
+						},
+						Spec: routev1.RouteSpec{
+							Host: "wildcard.test.com",
+							Path: "/",
+							To: routev1.RouteTargetReference{
+								Name: "service-1",
+							},
+							Port: &routev1.RoutePort{
+								TargetPort: intstr.FromInt(80),
+							},
+							WildcardPolicy: routev1.WildcardPolicySubdomain,
+						},
+					},
+				}},
+			},
+			args: queueKey{namespace: "test", name: "1"},
+			wantRoutePatches: []clientgotesting.PatchActionImpl{
+				{
+					Name:  "1-abcdef",
+					Patch: []byte(`[{"op":"replace","path":"/spec","value":{"host":"wildcard.test.com","path":"/","to":{"kind":"","name":"service-1","weight":null},"port":{"targetPort":"http"},"wildcardPolicy":"Subdomain"}},{"op":"replace","path":"/metadata/annotations","value":null}]`),
+				},
+			},
+		},
+
+		{
 			name: "create route - blocked by expectation",
 			fields: fields{
 				i: &ingressLister{Items: []*networkingv1beta1.Ingress{
